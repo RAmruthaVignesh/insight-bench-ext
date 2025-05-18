@@ -131,7 +131,7 @@ class Agent:
 
         return insights
 
-    def predict_insights_wo_questions(self, table, questions, savedir, savedir_categories, skill_flag=1):
+    def predict_insights_wo_questions(self, table, questions, savedir, savedir_categories, skill_flag=1, gt_answer=None):
         """
         Predict insights for a given table, goal, and persona
         """
@@ -168,6 +168,7 @@ class Agent:
                     os.path.join("data/skills/algorithms_summary", str(skill) + ".txt")
                 )
                 if os.path.exists(summary_path):
+                    print("Loading skill summary:", summary_path)
                     summary_flag = 1
                     with open(summary_path, "r") as file:
                         skill_text = file.read()
@@ -188,7 +189,12 @@ class Agent:
                 skill_flag=skill_flag, 
                 ques_no=i, 
                 summary_flag=summary_flag)
-            qa_list.append({'question':question, 'skill':q['predicted_skills'], 'predicted_insight':insight,'plot':plot, 'code_skill': code_skill})
+            qa_list.append({'question':question,
+            'skill':q['predicted_skills'],
+            'predicted_insight':insight,
+            'gt_answer':gt_answer[i],
+            'plot':plot, 
+            'code_skill': code_skill})
             question_dir = os.path.join(savedir, "question_" + str(i))
             os.makedirs(question_dir, exist_ok=True)
             #Save the question and insight

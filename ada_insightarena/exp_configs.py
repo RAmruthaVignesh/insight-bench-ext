@@ -7,7 +7,8 @@ EXP_GROUPS["insights_insightarena"] += [
         "model": "gpt-4o",
         "eval_mode": "insights",
         "with_skills": 1,
-        "data_path": "data"
+        "data_path": "data/batch4",
+        "data_batch": "final batch 4"
     }
 ]
 

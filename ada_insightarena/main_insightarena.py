@@ -56,6 +56,7 @@ def main_insightarena(exp_dict, savedir, save_dir_categories, reset=False):
                 savedir=savedir_data,
                 savedir_categories=savedir_categories,
                 skill_flag=exp_dict["with_skills"],
+                gt_answer=data_dict['answers']
             )
             print(pred_insights)
             # get the ground truth
