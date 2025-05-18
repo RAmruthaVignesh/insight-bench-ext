@@ -8,6 +8,8 @@
 
 Insight-Bench is a benchmark dataset designed to evaluate end-to-end data analytics by evaluating agents' ability to perform comprehensive data analysis across diverse use cases, featuring carefully curated insights, an evaluation mechanism based on LLaMA-3-Eval or G-EVAL, and a data analytics agent, AgentPoirot.
 
+##How to evaluate your insights.
+Run `python3 evaluation/main.py data/<your data folder>`, This calculates and saves metric scores. FrugalScore, "Hybrid" and G-EVAL methods have been incorporated for this task.
 ## Data
 
 All groundtruth notebooks are in `data/notebooks`. 
