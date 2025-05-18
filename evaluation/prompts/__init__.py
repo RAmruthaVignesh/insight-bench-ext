@@ -424,31 +424,32 @@ def get_g_eval_prompt(method="basic"):
 
 
 G_EVAL_BASIC_TEMPLATE = """
-Below is an instruction that describes a task. Write a response that appropriately completes the request.
+Below is an instruction that describes your task. Write only a single <rating>...</rating>.
 
 ### Instruction:
-Provided Answer:
+Student’s Predicted Insight:
 {answer}
 
-Ground Truth Answer:
+Reference (Ground Truth) Insight:
 {gt_answer}
 
-Follow these instructions when writing your response:
-* On a scale of 1-10, provide a numerical rating for how close the provided answer is to the ground truth answer, with 10 denoting that the provided answer is the same as ground truth answer.
-* Your response should contain only the numerical rating. DONOT include anything else like the provided answer, the ground truth answer, or an explanation of your rating scale in your response.
-* Wrap your numerical rating inside <rating></rating> tags.
-* Check very carefully before answering.
-* Follow the output format as shown in the example below:
-Example response:
-<rating>7</rating>
+Follow these instructions exactly:
+1. On a scale of 1–10, rate **coverage**: how completely the student’s insight captures the facts and relationships in the reference insight.  
+   - 10 = fully covers/corresponds  
+   - 1 = no overlap or relevance  
+2. **Respond with nothing but** the integer rating, wrapped in `<rating>` tags.  
+3. **Do not** include any other text, explanation, or the original insights themselves.
+4. **Any extraneous content will be treated as invalid.**
+
+Example:
+<rating>8</rating>
 
 ### Response:
-
 """
 
 G_EVAL_BINARY_SYSTEM_MESSAGE = """You are a high school teacher evaluating student responses to a question. You are tasked with grading the response based on how well it answers the question. You are to provide a numerical rating for how well the provided response matches the ground truth answer."""
 
-G_EVAL_BASIC_SYSTEM_MESSAGE = """You are a high school teacher evaluating student responses to a question. You are tasked with grading the response based on how well it answers the question. You are to provide a numerical rating for how well the response answers the question based on the ground truth answer."""
+G_EVAL_BASIC_SYSTEM_MESSAGE = """You are a high school teacher evaluating student-written data insights against a reference insight.Your task is to judge how well the student's predicted insight covers or corresponds to the ground truth insight."""
 
 
 G_EVAL_BINARY_TEMPLATE = """
