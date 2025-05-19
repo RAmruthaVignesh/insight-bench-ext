@@ -428,34 +428,46 @@ def get_g_eval_prompt(method="basic"):
 
 
 G_EVAL_BASIC_TEMPLATE = """
-Below is an instruction that describes your task. Write only a single <rating>...</rating>.
+Below are several examples of how to evaluate.  After those, you’ll see a new pair to judge.
 
-### Instruction:
+### Example 1
+Student’s Predicted Insight:
+> “The phone channel still trails email by about 20% in user satisfaction, indicating customers prefer email support.”
+
+Reference (Ground Truth) Insight:
+> “Email has a roughly 20 point higher satisfaction rating than phone, showing users lean on email over phone support.”
+
+Expected output:
+<decision>PASS</decision>
+
+### Example 2
+Student’s Predicted Insight:
+> “Sales dipped in Q2 but did not recover by Q4.”
+
+Reference (Ground Truth) Insight:
+> “After a Q2 slump, sales rebounded to new highs in Q4.”
+
+Expected output:
+<decision>FAIL</decision>
+
+---
+
+Now evaluate this new student insight:
+
 Student’s Predicted Insight:
 {answer}
 
 Reference (Ground Truth) Insight:
 {gt_answer}
-
-Follow these instructions exactly:
-1. On a scale of 1–10, rate **coverage**: how completely the student’s insight captures the facts and relationships in the reference insight.  
-   - 10 = fully covers/corresponds  
-   - 1 = no overlap or relevance  
-2. **Respond with nothing but** the integer rating, wrapped in `<rating>` tags.  
-3. **Do not** include any other text, explanation, or the original insights themselves.
-4. **Any extraneous content will be treated as invalid.**
-
-Example:
-<rating>8</rating>
-
-### Response:
 """
 
 G_EVAL_BINARY_SYSTEM_MESSAGE = """You are a high school teacher evaluating student responses to a question. You are tasked with grading the response based on how well it answers the question. You are to provide a numerical rating for how well the provided response matches the ground truth answer."""
 
-G_EVAL_BASIC_SYSTEM_MESSAGE = """You are a high school teacher evaluating student-written data insights against a reference insight.Your task is to judge how well the student's predicted insight covers or corresponds to the ground truth insight."""
-
-
+# G_EVAL_BASIC_SYSTEM_MESSAGE = """You are a high school teacher grading student‐written data insights against a reference insight.Be generous: if the student’s insight captures *any* of the key facts or relationships—even partially—treat it as PASS.Only output a single XML tag <decision>PASS</decision> or <decision>FAIL</decision>."""
+G_EVAL_BASIC_SYSTEM_MESSAGE ="""You are a kind, generous high school teacher evaluating student‐written data insights against a reference insight.Your job is to decide whether the student’s insight **covers** the key facts, trends or relationships in the reference.  
+- If there is **any** correct overlap, respond **PASS**.  
+- Only respond **FAIL** if the student’s insight completely misses every core point.  
+Output **exactly** one XML tag—either `<decision>PASS</decision>` or `<decision>FAIL</decision>`—and nothing else."""
 G_EVAL_BINARY_TEMPLATE = """
 Below is an instruction that describes a task. Write a response that appropriately completes the request.
 

@@ -53,16 +53,26 @@ def compute_g_eval(predictions: list[str], references: list[str], model_name="gp
             {"role": "user",   "content": prompt},
             ],
             temperature=0.0,
-            max_tokens=10,
+            max_tokens=10
         )
         raw = resp.choices[0].message.content.strip()
         print("▶️ G-Eval raw output:", repr(raw))
-        m = re.search(r"<rating>(\d+)</rating>", raw)
-        scores.append(float(m.group(1)) / 10.0 if m else 0.0)
+        # m = re.search(r"<rating>(\d+)</rating>", raw)
+        # scores.append(float(m.group(1)) / 3.0 if m else 0.0)
+        # look for <decision>PASS</decision> or <decision>FAIL</decision>
+        # decision = re.search(r"<decision>(PASS|FAIL)", raw).group(1)
+        m = re.search(r"<decision>(PASS|FAIL)</decision>", raw, re.IGNORECASE)
+        
+        if m:
+            decision = m.group(1).upper()
+            scores.append(1.0 if decision == "PASS" else 0.0)
+        else:
+           # if LLM misbehaves, treat as FAIL
+           scores.append(0.0)
     return scores 
 
 
-def evaluate_all(root_dir: str, out_csv: str = "batch3_improved_metricresults.csv"):
+def evaluate_all(root_dir: str, out_csv: str = "batch4_g_binary_results.csv"):
     records = []
 
     for ds in sorted(os.listdir(root_dir)):
@@ -81,20 +91,22 @@ def evaluate_all(root_dir: str, out_csv: str = "batch3_improved_metricresults.cs
 
         # 2) run each metric _once_ over the batch
         # bs_list = compute_bartscore(preds, gts)
-        fg_list = compute_frugalscore(preds, gts)
-        hy_list = [ compute_hybrid_score(p, g) 
-                    for p, g in zip(preds, gts) ]
+        # fg_list = compute_frugalscore(preds, gts)
+        # hy_list = [ compute_hybrid_score(p, g) 
+        #             for p, g in zip(preds, gts) ]
         gs_list = compute_g_eval(preds, gts)
         
         # 3) zip & emit
-        for i, (e, fg, hy, gs) in enumerate(
-                zip(entries,fg_list, hy_list, gs_list),
+        # e, fg, hy, 
+        for i, (e,gs) in enumerate(
+                zip(entries, gs_list),
                 start=1):
+            #fg_list, hy_list
             pred = e.get("predicted_insight","")
             gt   = e.get("gt_answer","")
             print(f"  [{i:>3}/{n}]  "
-                  f" Frugal={fg: .3f}  "
-                  f"Hybrid={hy: .3f}  Geval={gs: .3f}")
+                #   f" Frugal={fg: .3f} Hybrid={hy: .3f}  "
+                  f"Geval={gs: .3f}")
 
             records.append({
                 "dataset":             ds,
@@ -102,8 +114,8 @@ def evaluate_all(root_dir: str, out_csv: str = "batch3_improved_metricresults.cs
                 "predicted_insight":   pred,
                 "ground_truth_insight":gt,
                 # "bart_score":          bs,
-                "frugal_score":        fg,
-                "hybrid_score":        hy,
+                # "frugal_score":        fg,
+                # "hybrid_score":        hy,
                 "geval_score":         gs
             })
 
