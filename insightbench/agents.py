@@ -7,8 +7,9 @@ import pandas as pd
 from insightbench.utils import agent_utils as au
 from insightbench import prompts
 from langchain.schema import HumanMessage, SystemMessage
-from insightbench.utils.metrics_utils import score_insight
-from insightbench import metrics
+
+from evaluation.metrics_utils import score_insight
+from evaluation import metrics
 from PIL import Image
 import pandas as pd
 from typing import Dict, List, Optional
@@ -530,7 +531,8 @@ class AgentDataGen:
         self.pattern_designer = PatternDesigner(api_key)
         self.pattern_injector = PatternInjector(api_key)
         self.tasks_path = tasks_path
-        self.tasks = self._load_tasks()
+        self.tasks = self._load_tasks().get("tasks")
+        self.skills = self._load_tasks().get("SKILLS")
         self.dataset = dataset
 
     def _load_tasks(self) -> dict:
@@ -541,19 +543,21 @@ class AgentDataGen:
         except Exception as e:
             raise ValueError(f"Failed to load tasks from {self.tasks_path}: {str(e)}")
 
-    def generate_patterns(self, data: pd.DataFrame, task: str) -> Dict[str, List[Dict]]:
+    def generate_patterns(
+        self, data: pd.DataFrame, task: str, skills: List[str]
+    ) -> Dict[str, List[Dict]]:
         """Generate patterns for the given data and task.
 
         Args:
             data: Input DataFrame containing the data to analyze
             task: Description of the analytics task
-
+            skills: List of skills for the given task
         Returns:
             Dictionary mapping column names to lists of pattern suggestions
         """
-        return self.pattern_designer.design_patterns(data, task)
+        return self.pattern_designer.design_patterns(data, task, skills)
 
-    def generate_all_patterns(
+    def generate_benchmark_dataset(
         self,
         data: pd.DataFrame,
         output_dir: str = "results/Patterns",
@@ -568,115 +572,161 @@ class AgentDataGen:
         """
         os.makedirs(output_dir, exist_ok=True)
 
-        for domain, domain_tasks in self.tasks.items():
-            print(f"\nProcessing domain: {domain}")
-
-            # Create domain directory
-            domain_dir = os.path.join(output_dir, domain)
-            os.makedirs(domain_dir, exist_ok=True)
-
-            for task in domain_tasks:
+        for task in self.tasks:
+            if task not in self.skills:
+                continue
+            else:
+                skills = self.skills[task]
                 print(f"\nProcessing task: {task}")
 
-                # Check if patterns already exist
-                task_filename = task.lower().replace(" ", "_") + "_patterns.json"
-                output_path = os.path.join(domain_dir, task_filename)
+            # # Create task directory
+            # task_dir = os.path.join(output_dir, task.lower().replace(" ", "_"))
+            # os.makedirs(task_dir, exist_ok=True)
 
-                if os.path.exists(output_path):
+            # Check if patterns already exist
+            task_filename = task.lower().replace(" ", "_") + "_patterns.json"
+            output_path = os.path.join(output_dir, task_filename)
+
+            if os.path.exists(output_path):
+                print(
+                    f"Skipping pattern generation for task '{task}' - patterns already exist"
+                )
+                with open(output_path, "r") as f:
+                    patterns = json.load(f)
+            else:
+                try:
+                    # Generate patterns
+                    patterns = self.generate_patterns(data, task, skills)
+
+                    # Save patterns to file
+                    with open(output_path, "w") as f:
+                        json.dump(patterns, f, indent=2)
+
+                    print(f"Saved patterns to: {output_path}")
+
+                except Exception as e:
+                    print(f"Error generating patterns for task '{task}': {str(e)}")
+                    continue
+
+            # Generate and inject pattern codes
+            pattern_codes = {}
+            injected_dir = "data/IBExt"
+            for pattern_index, pattern_info in enumerate(patterns.get("patterns", [])):
+                print(f"\nProcessing pattern {pattern_index + 1}...")
+                # Create a single pattern JSON
+                single_pattern = {
+                    "kpis": patterns.get("kpis", []),
+                    "patterns": [pattern_info],  # Only include the current
+                    # "questions": patterns.get("questions", []),
+                    "QA": patterns.get("answers", []),
+                }
+                # Get inject codes for this pattern
+                pattern_code, columns_str = self.pattern_injector.get_inject_codes(
+                    json.dumps(single_pattern)
+                )
+                pattern_codes.update(pattern_code)
+
+                # Get pattern ID from the pattern info
+                pattern_id = pattern_info.get("id", f"pattern_{pattern_index + 1}")
+                patternsID = pattern_info.get("pattern_index")
+
+                # Create injected filename using pattern ID
+                injected_filename = (
+                    f"{task.lower().replace(' ', '_')}_{pattern_id}_injected.csv"
+                )
+                injected_path = os.path.join(injected_dir, injected_filename)
+
+                if os.path.exists(injected_path):
                     print(
-                        f"Skipping pattern generation for task '{task}' - patterns already exist"
+                        f"Skipping data injection for pattern '{pattern_id}' - injected CSV already exists"
                     )
-                    with open(output_path, "r") as f:
-                        patterns = json.load(f)
+                    # Load the injected data from CSV
+                    injected_data = pd.read_csv(injected_path)
                 else:
-                    try:
-                        # Generate patterns
-                        patterns = self.generate_patterns(data, task)
-
-                        # Save patterns to file
-                        with open(output_path, "w") as f:
-                            json.dump(patterns, f, indent=2)
-
-                        print(f"Saved patterns to: {output_path}")
-
-                    except Exception as e:
-                        print(f"Error generating patterns for task '{task}': {str(e)}")
-                        continue
-
-                # Generate and inject pattern codes
-                pattern_codes = {}
-                injected_dir = "data/IBExt"
-                for pattern_index, pattern_info in enumerate(
-                    patterns.get("patterns", [])
-                ):
-                    print(f"\nProcessing pattern {pattern_index + 1}...")
-                    # Create a single pattern JSON
-                    single_pattern = {
-                        "kpis": patterns.get("kpis", []),
-                        "patterns": [pattern_info],  # Only include the current
-                        "questions": patterns.get("questions", []),
-                        "answers": patterns.get("answers", []),
-                    }
-                    # Get inject codes for this pattern
-                    pattern_code = self.pattern_injector.get_inject_codes(
-                        json.dumps(single_pattern)
+                    # Inject patterns into the data
+                    injected_data = self.pattern_injector.inject_patterns(
+                        base_df=self.dataset,
+                        pattern_codes=pattern_code,
+                        hash_id=hash_id,
                     )
-                    pattern_codes.update(pattern_code)
 
-                    # Get pattern ID from the pattern info
-                    pattern_id = pattern_info.get("id", f"pattern_{pattern_index + 1}")
-                    patternsID = pattern_info.get("pattern_index")
+                    # Save injected data to data/IBExt
+                    injected_data.to_csv(injected_path, index=False)
 
-                    # Create injected filename using pattern ID
-                    injected_filename = (
-                        f"{task.lower().replace(' ', '_')}_{pattern_id}_injected.csv"
-                    )
-                    injected_path = os.path.join(injected_dir, injected_filename)
+                    print(f"Saved injected data to: {injected_path}")
 
-                    if os.path.exists(injected_path):
-                        print(
-                            f"Skipping data injection for pattern '{pattern_id}' - injected CSV already exists"
+                # Test the injected data with questions from answers
+                pattern_answers = [
+                    ans
+                    for ans in patterns.get("answers", [])
+                    if ans.get("caused_by_pattern") == patternsID
+                ]
+
+                max_retries = 3
+                retry_count = 0
+                is_passed = False
+
+                while retry_count < max_retries and not is_passed:
+                    if retry_count > 0:
+                        print(f"\nRetry attempt {retry_count + 1} of {max_retries}")
+                        # Regenerate inject codes
+                        pattern_code, columns_str = (
+                            self.pattern_injector.get_inject_codes(
+                                json.dumps(single_pattern)
+                            )
                         )
-                        # Load the injected data from CSV
-                        injected_data = pd.read_csv(injected_path)
-                    else:
-                        # Inject patterns into the data
+                        # Reinject patterns
                         injected_data = self.pattern_injector.inject_patterns(
                             base_df=self.dataset,
                             pattern_codes=pattern_code,
                             hash_id=hash_id,
                         )
-
-                        # Save injected data to data/IBExt
+                        # Save reinjected data
                         injected_data.to_csv(injected_path, index=False)
+                        print(f"Reinjected and saved data to: {injected_path}")
 
-                        print(f"Saved injected data to: {injected_path}")
-
-                    # Test the injected data with questions from answers
-                    pattern_answers = [
-                        ans
-                        for ans in patterns.get("answers", [])
-                        if ans.get("caused_by_pattern") == patternsID
-                    ]
-
+                    # Test each answer
+                    all_answers_passed = True
                     for answer_info in pattern_answers:
-                        # print(f"\nTesting question for pattern {patternsID}:")
                         print(f"Question: {answer_info['question']}")
                         print(
                             f"Expected Answer: {answer_info['answer_after_injection']}"
                         )
                         # Test if the injected pattern maintains the expected answer
-                        self.pattern_injector.test_inject(
+                        answer_passed = self.pattern_injector.test_inject(
+                            columns_str=columns_str,
                             injected_data=injected_data,
                             question=answer_info["question"],
                             expected_answer=answer_info["answer_after_injection"],
+                            hash_id=hash_id,
+                            pattern_id=patterns.get("ID"),
+                            injected_path=injected_path,
                         )
+                        if not answer_passed:
+                            all_answers_passed = False
+                            break
 
-                # Save pattern codes
-                codes_filename = task.lower().replace(" ", "_") + "_codes.json"
-                codes_path = os.path.join(domain_dir, codes_filename)
+                    is_passed = all_answers_passed
+                    retry_count += 1
 
-                with open(codes_path, "w") as f:
-                    json.dump(pattern_codes, f, indent=2)
+                # If all retries failed, delete the injected file
+                if not is_passed:
+                    print(
+                        f"\nAll {max_retries} attempts failed. Deleting injected file: {injected_path}"
+                    )
+                    if os.path.exists(injected_path):
+                        os.remove(injected_path)
+                        print(f"Deleted file: {injected_path}")
+                else:
+                    print(
+                        f"\nSuccessfully injected and tested pattern after {retry_count} attempt(s)"
+                    )
 
-                print(f"Saved pattern codes to: {codes_path}")
+            # Save pattern codes
+            codes_filename = task.lower().replace(" ", "_") + "_codes.json"
+            codes_path = os.path.join(output_dir, codes_filename)
+
+            with open(codes_path, "w") as f:
+                json.dump(pattern_codes, f, indent=2)
+
+            print(f"Saved pattern codes to: {codes_path}")
